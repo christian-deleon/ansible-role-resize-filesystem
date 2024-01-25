@@ -1,0 +1,55 @@
+---
+- name: Install parted
+  ansible.builtin.apt:
+    name: parted
+    state: present
+  become: true
+
+- name: Get current partition size
+  ansible.builtin.shell: "parted /dev/sda print | grep ' 3 '"
+  register: partition_info
+  changed_when: false
+  become: true
+
+- name: Resize the sda3 partition to use all available space
+  ansible.builtin.command: "parted /dev/sda resizepart 3 100%"
+  when: "'100%' not in partition_info.stdout"
+  become: true
+
+- name: Inform the OS about the partition table changes
+  ansible.builtin.command: partprobe
+  when: "'100%' not in partition_info.stdout"
+  become: true
+
+- name: Get physical volume info
+  ansible.builtin.shell: "pvs /dev/sda3"
+  register: pv_info
+  changed_when: false
+  become: true
+
+- name: Resize the physical volume
+  ansible.builtin.command: pvresize /dev/sda3
+  when: pv_info.stdout is search("/dev/sda3")
+  become: true
+
+- name: Get logical volume free space
+  ansible.builtin.shell: "vgs ubuntu-vg | tail -n1 | awk '{print $7}'"
+  register: vg_free_space
+  changed_when: false
+  become: true
+
+- name: Extend the logical volume to use all free space in the volume group
+  ansible.builtin.command: lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+  when: vg_free_space.stdout != "0"
+  become: true
+
+- name: Check if filesystem resize is needed
+  ansible.builtin.shell: "df -hP /dev/ubuntu-vg/ubuntu-lv | tail -n1 | awk '{print $2, $3}'"
+  register: fs_info
+  changed_when: false
+  become: true
+
+- name: Resize the filesystem to fit the logical volume
+  ansible.builtin.command: resize2fs /dev/ubuntu-vg/ubuntu-lv
+  when: fs_info.stdout.split(' ')[0] != fs_info.stdout.split(' ')[1]
+  become: true
