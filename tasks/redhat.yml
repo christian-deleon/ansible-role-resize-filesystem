@@ -16,11 +16,14 @@
     path: "{{ root_fs }}"
     state: unmounted
     fstype: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='fstype') | first }}"
+  become: true
 
 - name: Resize main disk using parted with pre-seeded confirmation
   ansible.builtin.shell:
     cmd: "echo Yes | parted ---pretend-input-tty /dev/{{ main_disk }} resizepart {{ root_fs_index }} 100%"
+  become: true
 
 - name: Resize root filesystem
   ansible.builtin.shell:
     cmd: "xfs_growfs {{ root_fs }}"
+  become: true
