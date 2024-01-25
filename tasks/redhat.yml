@@ -11,19 +11,32 @@
   ansible.builtin.set_fact:
     root_fs_index: "{{ root_fs | regex_replace('^.*([0-9]+)$', '\\1') }}"
 
-- name: Unmount root filesystem
-  ansible.builtin.mount:
-    path: "{{ root_fs }}"
-    state: unmounted
-    fstype: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='fstype') | first }}"
+- name: Check if main disk partition needs resizing
+  ansible.builtin.command:
+    cmd: "parted /dev/{{ main_disk }} print | grep 'Partition Table:'"
+  register: parted_output
   become: true
+  changed_when: false
+
+- name: print parted output
+  ansible.builtin.debug:
+    msg: "{{ parted_output.stdout }}"
 
 - name: Resize main disk using parted with pre-seeded confirmation
   ansible.builtin.shell:
     cmd: "echo Yes | parted ---pretend-input-tty /dev/{{ main_disk }} resizepart {{ root_fs_index }} 100%"
+  when: "'100%' not in parted_output.stdout"
   become: true
+
+- name: Check if root filesystem needs resizing
+  ansible.builtin.shell:
+    cmd: "xfs_info {{ root_fs }}"
+  register: xfs_info
+  become: true
+  changed_when: false
 
 - name: Resize root filesystem
   ansible.builtin.shell:
     cmd: "xfs_growfs {{ root_fs }}"
+  when: "'data = bsize=' not in xfs_info.stdout" # Adjust the condition based on the output format of xfs_info
   become: true

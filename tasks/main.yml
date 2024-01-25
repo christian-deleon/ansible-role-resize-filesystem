@@ -1,7 +1,39 @@
 ---
-- name: Gather facts
+- name: Gather hardware facts
   ansible.builtin.setup:
-  
+    gather_subset: hardware
+
+- name: Get Main Disk Size
+  ansible.builtin.set_fact:
+    main_disk_size_raw: "{{ ansible_devices['sda'].size }}"
+
+- name: Get Main Disk Size Value
+  ansible.builtin.set_fact:
+    main_disk_size_value: "{{ main_disk_size_raw | regex_replace('^([0-9]+\\.[0-9]+) ([A-Z]+)$', '\\1') }}"
+
+- name: Get Main Disk Size Unit
+  ansible.builtin.set_fact:
+    main_disk_size_unit: "{{ main_disk_size_raw | regex_replace('^([0-9]+\\.[0-9]+) ([A-Z]+)$', '\\2') }}"
+
+- name: Convert Main Disk Size to Integer (GB)
+  ansible.builtin.set_fact:
+    main_disk_size_gb: "{{ (main_disk_size_value | float * 1024 if main_disk_size_unit == 'TB' else main_disk_size_value | float) | int }}"
+
+- name: Get Root Partition Size
+  ansible.builtin.set_fact:
+    root_filesystem_size: "{{ ((ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | list | first | int / 1024 ** 3) | float) | int }}"
+
+- name: Calculate partition size percentage
+  ansible.builtin.set_fact:
+    partition_size_percentage: "{{ ((root_filesystem_size | float) / (main_disk_size_gb | float) * 100) | round(0) | int }}"
+
+- name: Partition size percentage
+  ansible.builtin.debug:
+    msg:
+      - "Main disk size: {{ main_disk_size_gb }} GB"
+      - "Root filesystem size: {{ root_filesystem_size }} GB"
+      - "Partition size percentage: {{ partition_size_percentage }}%"
+
 - name: Include OS specific tasks
   ansible.builtin.include_tasks: "{{ ansible_os_family | lower }}.yml"
-  when: ansible_os_family in ['RedHat', 'Debian']
+  when: "ansible_os_family in ['RedHat', 'Debian'] and (partition_size_percentage | int) < resize_filesystem_partition_size_threshold"
