@@ -1,4 +1,26 @@
 ---
-- name: Print OS family
-  ansible.builtin.debug:
-    msg: "OS family is {{ ansible_os_family }}"
+- name: Get main disk name
+  ansible.builtin.set_fact:
+    main_disk: "{{ ansible_devices | dictsort | map('first') | first }}"
+
+- name: Get root filesystem name
+  ansible.builtin.set_fact:
+    root_fs: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}"
+  
+- name: Get root filesystem index
+  ansible.builtin.set_fact:
+    root_fs_index: "{{ root_fs | regex_replace('^.*([0-9]+)$', '\\1') }}"
+
+- name: Unmount root filesystem
+  ansible.builtin.mount:
+    path: "{{ root_fs }}"
+    state: unmounted
+    fstype: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='fstype') | first }}"
+
+- name: Resize main disk using parted with pre-seeded confirmation
+  ansible.builtin.shell:
+    cmd: "echo Yes | parted ---pretend-input-tty /dev/{{ main_disk }} resizepart {{ root_fs_index }} 100%"
+
+- name: Resize root filesystem
+  ansible.builtin.shell:
+    cmd: "xfs_growfs {{ root_fs }}"
