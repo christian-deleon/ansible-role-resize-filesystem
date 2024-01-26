@@ -18,10 +18,6 @@
   become: true
   changed_when: false
 
-- name: print parted output
-  ansible.builtin.debug:
-    msg: "{{ parted_output.stdout }}"
-
 - name: Resize main disk using parted with pre-seeded confirmation
   ansible.builtin.shell:
     cmd: "echo Yes | parted ---pretend-input-tty /dev/{{ main_disk }} resizepart {{ root_fs_index }} 100%"
