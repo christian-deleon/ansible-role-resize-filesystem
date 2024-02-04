@@ -19,9 +19,13 @@
   ansible.builtin.set_fact:
     main_disk_size_gb: "{{ (main_disk_size_value | float * 1024 if main_disk_size_unit == 'TB' else main_disk_size_value | float) | float }}"
 
+- name: Get Root Partition
+  ansible.builtin.set_fact:
+    root_partition: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') }}"
+
 - name: Get Root Partition Size
   ansible.builtin.set_fact:
-    root_filesystem_size: "{{ ((ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | list | first | float / 1024 ** 3) | float) | float }}"
+    root_filesystem_size: "{{ ((root_partition | map(attribute='size_total') | list | first | float / 1024**3) | float) | float }}"
 
 - name: Calculate partition size percentage
   ansible.builtin.set_fact:

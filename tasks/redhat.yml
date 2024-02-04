@@ -1,15 +1,7 @@
 ---
 - name: Get main disk name
   ansible.builtin.set_fact:
-    main_disk: "{{ ansible_devices | dictsort | map('first') | first }}"
-
-- name: Get root filesystem name
-  ansible.builtin.set_fact:
-    root_fs: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}"
-  
-- name: Get root filesystem index
-  ansible.builtin.set_fact:
-    root_fs_index: "{{ root_fs | regex_replace('^.*([0-9]+)$', '\\1') }}"
+    main_disk: "{{ ansible_devices.keys() | select('match', '^sd.*') | list | first }}"
 
 - name: Check if main disk partition needs resizing
   ansible.builtin.command:
@@ -18,21 +10,45 @@
   become: true
   changed_when: false
 
+- name: Get the partition containing the root filesystem
+  ansible.builtin.shell: |
+    set -o pipefail
+    lsblk -J | jq -r '.. | select(.children? // [] | .[]? | .mountpoint == \"/\").name'
+  register: root_partition
+  changed_when: false
+
+- name: Set root partition fact
+  ansible.builtin.set_fact:
+    root_partition: "{{ root_partition.stdout }}"
+
+- name: Get root partition index
+  ansible.builtin.set_fact:
+    root_part_index: "{{ root_partition | regex_replace('^.*([0-9]+)$', '\\1') }}"
+
+- name: Print main_disk and root_part_index
+  ansible.builtin.debug:
+    msg:
+      - "Main disk: {{ main_disk }}"
+      - "Root filesystem index: {{ root_part_index }}"
+
 - name: Resize main disk using parted with pre-seeded confirmation
-  ansible.builtin.shell:
-    cmd: "echo Yes | parted ---pretend-input-tty /dev/{{ main_disk }} resizepart {{ root_fs_index }} 100%"
+  ansible.builtin.shell: |
+    set -o pipefail
+    echo Yes | parted ---pretend-input-tty /dev/{{ main_disk }} resizepart {{ root_part_index }} 100%
   when: "'100%' not in parted_output.stdout"
   become: true
 
+- name: Get root filesystem
+  ansible.builtin.set_fact:
+    root_filesystem: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='device') | list | first }}"
+
 - name: Check if root filesystem needs resizing
-  ansible.builtin.shell:
-    cmd: "xfs_info {{ root_fs }}"
+  ansible.builtin.command: "xfs_info {{ root_filesystem }}"
   register: xfs_info
   become: true
   changed_when: false
 
 - name: Resize root filesystem
-  ansible.builtin.shell:
-    cmd: "xfs_growfs {{ root_fs }}"
+  ansible.builtin.command: "xfs_growfs {{ root_filesystem }}"
   when: "'data = bsize=' not in xfs_info.stdout" # Adjust the condition based on the output format of xfs_info
   become: true

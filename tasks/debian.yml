@@ -6,7 +6,9 @@
   become: true
 
 - name: Get current partition size
-  ansible.builtin.shell: "parted /dev/sda print | grep ' 3 '"
+  ansible.builtin.shell: |
+    set -o pipefail
+    parted /dev/sda print | grep ' 3 '
   register: partition_info
   changed_when: false
   become: true
@@ -33,7 +35,9 @@
   become: true
 
 - name: Get logical volume free space
-  ansible.builtin.shell: "vgs ubuntu-vg | tail -n1 | awk '{print $7}'"
+  ansible.builtin.shell: |
+    set -o pipefail
+    vgs ubuntu-vg | tail -n1 | awk '{print $7}'
   register: vg_free_space
   changed_when: false
   become: true
@@ -44,7 +48,9 @@
   become: true
 
 - name: Check if filesystem resize is needed
-  ansible.builtin.shell: "df -hP /dev/ubuntu-vg/ubuntu-lv | tail -n1 | awk '{print $2, $3}'"
+  ansible.builtin.shell: |
+    set -o pipefail
+    df -hP /dev/ubuntu-vg/ubuntu-lv | tail -n1 | awk '{print $2, $3}'
   register: fs_info
   changed_when: false
   become: true
