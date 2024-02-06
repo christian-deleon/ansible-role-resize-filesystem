@@ -10,12 +10,30 @@
   become: true
   changed_when: false
 
+- name: Install jq
+  ansible.builtin.yum:
+    name: jq
+    state: present
+  become: true
+
 - name: Get the partition containing the root filesystem
   ansible.builtin.shell: |
     set -o pipefail
-    lsblk -J | jq -r '.. | select(.children? // [] | .[]? | .mountpoint == \"/\").name'
+    lsblk -J | jq -r '.. | select(.children? // [] | .[]? | .mountpoint == "/").name'
   register: root_partition
   changed_when: false
+
+- name: Check root partition does not match main disk
+  ansible.builtin.set_fact:
+    is_main_disk: "{{ root_partition.stdout == main_disk }}"
+
+- name: Get the partition containing the root filesystem (if not main disk)
+  ansible.builtin.shell: |
+    set -o pipefail
+    lsblk -J | jq -r '.blockdevices[] | .children[]? | select(.mountpoint == "/").name'
+  register: root_partition
+  changed_when: false
+  when: is_main_disk
 
 - name: Set root partition fact
   ansible.builtin.set_fact:
